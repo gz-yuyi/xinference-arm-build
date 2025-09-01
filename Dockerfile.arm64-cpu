@@ -1,4 +1,4 @@
-FROM continuumio/miniconda3
+FROM continuumio/miniconda3:24.1.2-0
 
 LABEL maintainer="hello@xprobe.io"
 
@@ -35,7 +35,7 @@ RUN pip install torch torchvision torchaudio --index-url https://download.pytorc
 # Create modified requirements files without problematic packages
 RUN grep -v "^xoscar" /opt/inference/xinference/deploy/docker/requirements_cpu/requirements_cpu-base.txt > /tmp/requirements_cpu-base-arm64.txt && \
     grep -v "autoawq\|gptqmodel\|bitsandbytes" /opt/inference/xinference/deploy/docker/requirements_cpu/requirements_cpu-ml.txt > /tmp/requirements_cpu-ml-arm64.txt && \
-    sed 's/onnxruntime-gpu/onnxruntime/g; s/onnxruntime==1\.16\.0/onnxruntime>=1.20.0/g' /opt/inference/xinference/deploy/docker/requirements_cpu/requirements_cpu-models.txt > /tmp/requirements_cpu-models-arm64.txt
+    sed 's/onnxruntime-gpu/onnxruntime/g; s/onnxruntime==1\.16\.0/onnxruntime>=1.20.0/g; s/misaki>=0\.7\.15/misaki>=0.7.0/g; s/kokoro>=0\.7\.15/kokoro>=0.7.0/g' /opt/inference/xinference/deploy/docker/requirements_cpu/requirements_cpu-models.txt > /tmp/requirements_cpu-models-arm64.txt
 
 # Try to install xoscar, skip if fails (ARM64 compatibility issue)
 RUN pip install -i "$PIP_INDEX" --only-binary=xoscar xoscar>=0.7.2 || \
