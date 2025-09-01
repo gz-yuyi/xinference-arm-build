@@ -34,11 +34,15 @@ jobs:
         run: |
           git clone --depth 1 --branch ${{ github.event.inputs.xinference_tag }} https://github.com/xorbitsai/inference.git xinference-repo
 
+      - name: Copy custom ARM64 Dockerfile
+        run: |
+          cp Dockerfile.arm64-cpu xinference-repo/
+
       - name: Build and push ARM64 Docker image
         uses: docker/build-push-action@v5
         with:
           context: ./xinference-repo
-          file: ./xinference-repo/xinference/deploy/docker/Dockerfile.cpu
+          file: ./xinference-repo/Dockerfile.arm64-cpu
           platforms: linux/arm64
           push: true
           tags: |

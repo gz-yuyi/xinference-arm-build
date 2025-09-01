@@ -1,0 +1,49 @@
+FROM continuumio/miniconda3
+
+LABEL maintainer="hello@xprobe.io"
+
+ENV LANG=C.UTF-8 LC_ALL=C.UTF-8
+ENV PATH /opt/conda/bin:$PATH
+ENV NVM_DIR=/root/.nvm
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git curl build-essential && \
+    rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /opt/inference
+
+# Copy project files
+COPY . .
+
+# Install Node.js
+RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash && \
+    . $NVM_DIR/nvm.sh && \
+    nvm install 14.21.1 && \
+    nvm use 14.21.1
+
+# Install Python dependencies
+ARG PIP_INDEX=https://pypi.org/simple
+RUN python -m pip install --upgrade -i "$PIP_INDEX" pip && \
+    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu && \
+    pip install -i "$PIP_INDEX" --upgrade-strategy only-if-needed -r /opt/inference/xinference/deploy/docker/requirements_cpu/requirements_cpu-base.txt && \
+    pip install -i "$PIP_INDEX" --upgrade-strategy only-if-needed -r /opt/inference/xinference/deploy/docker/requirements_cpu/requirements_cpu-models.txt && \
+    cd /opt/inference && \
+    python setup.py build_web && \
+    git restore . && \
+    pip install -i "$PIP_INDEX" --no-deps "." && \
+    pip install -i "$PIP_INDEX" "xllamacpp>=0.2.0" && \
+    pip cache purge
+
+# Create requirements file without ARM64-incompatible packages
+RUN grep -v "autoawq\|gptqmodel\|bitsandbytes" /opt/inference/xinference/deploy/docker/requirements_cpu/requirements_cpu-ml.txt > /tmp/requirements_cpu-ml-arm64.txt && \
+    pip install -i "$PIP_INDEX" --upgrade-strategy only-if-needed -r /tmp/requirements_cpu-ml-arm64.txt && \
+    rm /tmp/requirements_cpu-ml-arm64.txt
+
+# Set up entry point
+ENV PYTHONPATH="${PYTHONPATH}:/opt/inference"
+EXPOSE 9997
+
+ENTRYPOINT ["python", "-m", "xinference.deploy.supervisor", "-H", "0.0.0.0"]
+CMD ["--help"]
