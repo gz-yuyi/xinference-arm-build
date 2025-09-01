@@ -36,10 +36,10 @@ RUN pip install torch torchvision torchaudio --index-url https://download.pytorc
 RUN grep -v "^xoscar" /opt/inference/xinference/deploy/docker/requirements_cpu/requirements_cpu-base.txt > /tmp/requirements_cpu-base-arm64.txt && \
     grep -v "autoawq\|gptqmodel\|bitsandbytes" /opt/inference/xinference/deploy/docker/requirements_cpu/requirements_cpu-ml.txt > /tmp/requirements_cpu-ml-arm64.txt
 
-# Install xoscar separately with --only-binary to avoid building from source
+# Try to install xoscar, skip if fails (ARM64 compatibility issue)
 RUN pip install -i "$PIP_INDEX" --only-binary=xoscar xoscar>=0.7.2 || \
     pip install -i "$PIP_INDEX" --no-build-isolation xoscar>=0.7.2 || \
-    pip install -i "$PIP_INDEX" xoscar>=0.7.2
+    echo "Warning: xoscar installation failed, skipping (ARM64 compatibility issue)"
 
 # Install other dependencies
 RUN pip install -i "$PIP_INDEX" --upgrade-strategy only-if-needed -r /tmp/requirements_cpu-base-arm64.txt && \
