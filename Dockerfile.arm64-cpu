@@ -2,13 +2,15 @@ FROM continuumio/miniconda3
 
 LABEL maintainer="hello@xprobe.io"
 
-ENV LANG=C.UTF-8 LC_ALL=C.UTF-8
-ENV PATH /opt/conda/bin:$PATH
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
+ENV PATH=/opt/conda/bin:$PATH
 ENV NVM_DIR=/root/.nvm
+ENV PYTHONPATH=/opt/inference
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    git curl build-essential && \
+    git curl build-essential gcc g++ python3-dev && \
     rm -rf /var/lib/apt/lists/*
 
 # Set working directory
@@ -25,24 +27,35 @@ RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | b
 
 # Install Python dependencies
 ARG PIP_INDEX=https://pypi.org/simple
-RUN python -m pip install --upgrade -i "$PIP_INDEX" pip && \
-    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu && \
-    pip install -i "$PIP_INDEX" --upgrade-strategy only-if-needed -r /opt/inference/xinference/deploy/docker/requirements_cpu/requirements_cpu-base.txt && \
+RUN python -m pip install --upgrade -i "$PIP_INDEX" pip setuptools wheel
+
+# Install PyTorch first
+RUN pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+
+# Create modified requirements files without problematic packages
+RUN grep -v "^xoscar" /opt/inference/xinference/deploy/docker/requirements_cpu/requirements_cpu-base.txt > /tmp/requirements_cpu-base-arm64.txt && \
+    grep -v "autoawq\|gptqmodel\|bitsandbytes" /opt/inference/xinference/deploy/docker/requirements_cpu/requirements_cpu-ml.txt > /tmp/requirements_cpu-ml-arm64.txt
+
+# Install xoscar separately with --only-binary to avoid building from source
+RUN pip install -i "$PIP_INDEX" --only-binary=xoscar xoscar>=0.7.2 || \
+    pip install -i "$PIP_INDEX" --no-build-isolation xoscar>=0.7.2 || \
+    pip install -i "$PIP_INDEX" xoscar>=0.7.2
+
+# Install other dependencies
+RUN pip install -i "$PIP_INDEX" --upgrade-strategy only-if-needed -r /tmp/requirements_cpu-base-arm64.txt && \
     pip install -i "$PIP_INDEX" --upgrade-strategy only-if-needed -r /opt/inference/xinference/deploy/docker/requirements_cpu/requirements_cpu-models.txt && \
-    cd /opt/inference && \
+    pip install -i "$PIP_INDEX" --upgrade-strategy only-if-needed -r /tmp/requirements_cpu-ml-arm64.txt
+
+# Build web components and install xinference
+RUN cd /opt/inference && \
     python setup.py build_web && \
     git restore . && \
     pip install -i "$PIP_INDEX" --no-deps "." && \
     pip install -i "$PIP_INDEX" "xllamacpp>=0.2.0" && \
     pip cache purge
 
-# Create requirements file without ARM64-incompatible packages
-RUN grep -v "autoawq\|gptqmodel\|bitsandbytes" /opt/inference/xinference/deploy/docker/requirements_cpu/requirements_cpu-ml.txt > /tmp/requirements_cpu-ml-arm64.txt && \
-    pip install -i "$PIP_INDEX" --upgrade-strategy only-if-needed -r /tmp/requirements_cpu-ml-arm64.txt && \
-    rm /tmp/requirements_cpu-ml-arm64.txt
-
-# Set up entry point
-ENV PYTHONPATH="${PYTHONPATH}:/opt/inference"
+# Clean up temporary files
+RUN rm -f /tmp/requirements_cpu-*-arm64.txt
 EXPOSE 9997
 
 ENTRYPOINT ["python", "-m", "xinference.deploy.supervisor", "-H", "0.0.0.0"]
